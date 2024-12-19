@@ -1,0 +1,173 @@
+---
+title: "Build and Deploy a Stroke Prediction Model Using R"
+author: "Rohit Kotamsetti"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Data Analysis Report
+
+This RMarkdown file documents the data analysis and steps taken to build and deploy a stroke prediction model using R. It includes tasks like data exploration, preprocessing, model building, evaluation, and deployment. The final report was completed on `r date()`.
+
+### Data Description
+
+According to the World Health Organization (WHO), stroke is the second leading cause of death globally, responsible for approximately 11% of total deaths.
+
+This dataset aims to predict the likelihood of a patient experiencing a stroke based on various features such as gender, age, health conditions, and lifestyle factors like smoking status. Each row in the dataset contains relevant information about a patient.
+
+---
+
+# Task One: Import Data and Preprocessing
+
+## Install and Load Required Packages
+
+```{r}
+# List of required packages
+packages <- c("tidyverse", "lubridate", "ggplot2", "dplyr", "caret", "randomForest", "skimr", "gridExtra", "caTools", "corrplot", "ggcorrplot", "naniar")
+
+# Install and load packages if not already installed
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg)
+    library(pkg, character.only = TRUE)
+  }
+}
+
+# Load the stroke dataset
+stroke_data <- read_csv("healthcare-dataset-stroke-data.csv", show_col_types = FALSE)
+
+# Preview the first few rows of the dataset
+head(stroke_data)
+```
+
+## Describe and explore the data
+
+```{r}
+# Overview of the dataset
+summary(stroke_data)  # Provides summary statistics
+glimpse(stroke_data)  # Quick structure of the dataset
+skim(stroke_data)     # Detailed summary of data (including missing values)
+
+# Check for missing values in the dataset
+miss_scan_count(data = stroke_data, search = list("Unknown", "N/A", "Other"))
+
+# Convert 'bmi' to numeric and impute missing BMI values with the median
+stroke_data$bmi <- as.numeric(stroke_data$bmi)
+idx <- complete.cases(stroke_data)
+bmi_idx <- is.na(stroke_data$bmi)
+median_bmi <- median(stroke_data$bmi, na.rm = TRUE)
+stroke_data[bmi_idx,]$bmi <- median_bmi
+
+# Verify no missing values left in the dataset
+colSums(is.na(stroke_data))
+
+# Gender vs Stroke
+stroke_data %>%
+  ggplot(aes(x = gender, fill = factor(stroke))) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("maroon", "blue")) +
+  ggtitle("Gender vs. Stroke")
+
+# Heart disease vs Stroke
+stroke_data %>%
+  ggplot(aes(x = factor(heart_disease), fill = factor(stroke))) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("maroon", "blue")) +
+  ggtitle("Heart Disease vs. Stroke")
+
+# Residence Type vs Stroke
+stroke_data %>%
+  ggplot(aes(x = Residence_type, fill = factor(stroke))) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("maroon", "blue")) +
+  ggtitle("Residence Type vs. Stroke")
+
+# Smoking Status vs Stroke
+stroke_data %>%
+  ggplot(aes(x = smoking_status, fill = factor(stroke))) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("maroon", "blue")) +
+  ggtitle("Smoking Status vs. Stroke")
+
+# Average Glucose Level vs Stroke
+stroke_data %>%
+  ggplot(aes(x = avg_glucose_level, fill = factor(stroke))) +
+  geom_density(alpha = 0.7) +
+  scale_fill_manual(values = c("maroon", "blue")) +
+  ggtitle("Average Glucose Level vs. Stroke")
+
+# Body Mass Index vs Stroke (Filtered for valid BMI range)
+stroke_data %>%
+  filter(between(bmi, 0, 60)) %>%
+  ggplot(aes(x = bmi, fill = factor(stroke))) +
+  geom_density(alpha = 0.7) +
+  scale_fill_manual(values = c("maroon", "blue")) +
+  ggtitle("Body Mass Index vs. Stroke")
+
+# Remove 'id' column as it is not useful for prediction
+stroke_data <- stroke_data %>%
+  select(-c(id)) %>%
+  filter(gender != "Other")  # Remove 'Other' category in gender column
+
+# Convert categorical columns to factors
+stroke_data$stroke <- factor(stroke_data$stroke, levels = c(0, 1), labels = c("No", "Yes"))
+stroke_data$hypertension <- factor(stroke_data$hypertension, levels = c(0, 1), labels = c("No", "Yes"))
+stroke_data$heart_disease <- factor(stroke_data$heart_disease, levels = c(0, 1), labels = c("No", "Yes"))
+
+# Check the structure of the cleaned data
+str(stroke_data)
+```
+
+# Task Two: Build prediction models
+
+```{r}
+# Distribution of Gender
+d1 <- stroke_data %>%
+  ggplot(aes(x = gender, fill = gender)) +
+  geom_bar(fill = c("red", "blue")) +
+  ggtitle("Gender Distribution") +
+  geom_text(aes(label=..count..), stat = "Count", vjust = 1.0)
+
+# Distribution of Hypertension
+d2 <- stroke_data %>%
+  ggplot(aes(x = hypertension, fill = hypertension)) +
+  geom_bar(fill = c("red", "blue")) +
+  ggtitle("Hypertension Distribution") +
+  geom_text(aes(label=..count..), stat = "Count", vjust = 1.0)
+
+# Display multiple plots in a grid
+grid.arrange(d1, d2, ncol = 2)
+```
+
+# Task Three: Evaluate and select prediction models
+
+```{r}
+# Split the dataset into training (80%) and testing (20%) sets
+sample.split(stroke_data$stroke, SplitRatio = 0.8) -> split_tag
+train <- subset(stroke_data, split_tag == TRUE)
+test <- subset(stroke_data, split_tag == FALSE)
+
+# Check the dimensions of the train and test sets
+dim(train)
+dim(test)
+```
+
+# Task Four: Deploy the prediction model
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Train a random forest model
+rf <- randomForest(formula = stroke ~ ., data = train)
+
+# Display the model summary
+rf
+```
+
+# Task Five: Findings and Conclusions
+
+```{r}
+# Evaluate model performance on test data
+confusionMatrix(predict(rf, test), test$stroke)
+```
